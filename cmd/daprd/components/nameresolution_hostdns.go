@@ -1,3 +1,5 @@
+//go:build allcomponents || stablecomponents
+
 /*
 Copyright 2021 The Dapr Authors
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,16 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package modes
+package components
 
-// DaprMode is the runtime mode for Dapr.
-type DaprMode string
-
-const (
-	// KubernetesMode is a Kubernetes Dapr mode.
-	KubernetesMode DaprMode = "kubernetes"
-	// StandaloneMode is a Standalone Dapr mode.
-	StandaloneMode DaprMode = "standalone"
-	// HostMode is a Host Dapr mode
-	HostMode DaprMode = "host"
+import (
+	hostdns "github.com/dapr/components-contrib/nameresolution/hostdns"
+	nrLoader "github.com/dapr/dapr/pkg/components/nameresolution"
 )
+
+func init() {
+	nrLoader.DefaultRegistry.RegisterComponent(hostdns.NewResolver, "hostdns")
+}

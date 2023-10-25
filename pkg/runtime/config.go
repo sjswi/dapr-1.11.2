@@ -88,6 +88,7 @@ type Config struct {
 	AllowedOrigins               string
 	Standalone                   config.StandaloneConfig
 	Kubernetes                   config.KubernetesConfig
+	Host                         config.HostConfig
 	MaxConcurrency               int
 	mtlsEnabled                  bool
 	SentryServiceAddress         string

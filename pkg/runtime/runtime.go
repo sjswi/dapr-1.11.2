@@ -226,6 +226,7 @@ type DaprRuntime struct {
 	tracerProvider *sdktrace.TracerProvider
 
 	workflowEngine *wfengine.WorkflowEngine
+	functionName   string
 }
 
 type ComponentsCallback func(components ComponentRegistry) error
@@ -528,6 +529,8 @@ func (a *DaprRuntime) initRuntime(opts *runtimeOpts) error {
 	if a.daprHTTPAPI != nil {
 		a.daprHTTPAPI.MarkStatusAsOutboundReady()
 	}
+	//TODO
+	// 修改点1
 	a.blockUntilAppIsReady()
 
 	err = a.createAppChannel()
@@ -2209,6 +2212,8 @@ func (a *DaprRuntime) initNameResolution() error {
 			resolverName = "kubernetes"
 		case modes.StandaloneMode:
 			resolverName = "mdns"
+		case modes.HostMode:
+			resolverName = "hostdns"
 		default:
 			fName := utils.ComponentLogName(resolverName, "nameResolution", resolverVersion)
 			return NewInitError(InitComponentFailure, fName, fmt.Errorf("unable to determine name resolver for %s mode", string(a.runtimeConfig.Mode)))
@@ -2229,6 +2234,7 @@ func (a *DaprRuntime) initNameResolution() error {
 		nr.AppPort:      strconv.Itoa(a.runtimeConfig.ApplicationPort),
 		nr.HostAddress:  a.hostAddress,
 		nr.AppID:        a.runtimeConfig.ID,
+		nr.FunctionName: a.functionName,
 	}
 
 	if err != nil {
@@ -3138,6 +3144,8 @@ func (a *DaprRuntime) authSecretStoreOrDefault(object interface{}) string {
 }
 
 func (a *DaprRuntime) blockUntilAppIsReady() {
+
+	//
 	if a.runtimeConfig.ApplicationPort <= 0 {
 		return
 	}
@@ -3186,6 +3194,8 @@ func (a *DaprRuntime) loadAppConfiguration() {
 	}
 }
 
+// TODO
+// 修改点2
 func (a *DaprRuntime) createAppChannel() (err error) {
 	if a.runtimeConfig.ApplicationPort == 0 {
 		log.Warn("App channel is not initialized. Did you configure an app-port?")
