@@ -131,6 +131,10 @@ func FromFlags() (*DaprRuntime, error) {
 		if err := validation.ValidateSelfHostedAppID(*appID); err != nil {
 			return nil, err
 		}
+	} else if *mode == string(modes.HostMode) {
+		if err := validation.ValidateSelfHostedAppID(*appID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Apply options to all loggers
@@ -383,6 +387,9 @@ func FromFlags() (*DaprRuntime, error) {
 		case modes.StandaloneMode:
 			log.Debug("Loading config from file: " + *config)
 			globalConfig, _, configErr = daprGlobalConfig.LoadStandaloneConfiguration(*config)
+		case modes.HostMode:
+			globalConfig, _, configErr = daprGlobalConfig.LoadHostConfiguration(*config)
+			log.Debug("Loading config from file: " + *config)
 		}
 	}
 
@@ -415,6 +422,14 @@ func FromFlags() (*DaprRuntime, error) {
 		log.Debugf("Found %d resiliency configurations from Kubernetes", len(resiliencyConfigs))
 		resiliencyProvider = resiliencyConfig.FromConfigurations(log, resiliencyConfigs...)
 	case modes.StandaloneMode:
+		if len(resourcesPath) > 0 {
+			resiliencyConfigs := resiliencyConfig.LoadLocalResiliency(log, *appID, resourcesPath...)
+			log.Debugf("Found %d resiliency configurations in resources path", len(resiliencyConfigs))
+			resiliencyProvider = resiliencyConfig.FromConfigurations(log, resiliencyConfigs...)
+		} else {
+			resiliencyProvider = resiliencyConfig.FromConfigurations(log)
+		}
+	case modes.HostMode:
 		if len(resourcesPath) > 0 {
 			resiliencyConfigs := resiliencyConfig.LoadLocalResiliency(log, *appID, resourcesPath...)
 			log.Debugf("Found %d resiliency configurations in resources path", len(resiliencyConfigs))

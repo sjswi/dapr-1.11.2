@@ -14,10 +14,10 @@ limitations under the License.
 package components
 
 import (
-	"github.com/dapr/components-contrib/state/redis"
+	"github.com/dapr/components-contrib/state/tredis"
 	stateLoader "github.com/dapr/dapr/pkg/components/state"
 )
 
 func init() {
-	stateLoader.DefaultRegistry.RegisterComponent(redis.NewRedisStateStore, "redis")
+	stateLoader.DefaultRegistry.RegisterComponent(tredis.NewTRedisStateStore, "tredis")
 }

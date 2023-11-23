@@ -52,6 +52,17 @@ func ValidateSelfHostedAppID(appID string) error {
 	return nil
 }
 
+// ValidateHostedAppID returns an error if the Dapr app id is not valid for self-hosted.
+func ValidateHostedAppID(appID string) error {
+	if appID == "" {
+		return errors.New("parameter app-id cannot be empty")
+	}
+	if strings.Contains(appID, ".") {
+		return errors.New("parameter app-id cannot contain dots")
+	}
+	return nil
+}
+
 func serviceName(appID string) string {
 	return fmt.Sprintf("%s-dapr", appID)
 }

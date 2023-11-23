@@ -227,6 +227,8 @@ type DaprRuntime struct {
 
 	workflowEngine *wfengine.WorkflowEngine
 	functionName   string
+	provider       string
+	region         string
 }
 
 type ComponentsCallback func(components ComponentRegistry) error
@@ -2223,7 +2225,8 @@ func (a *DaprRuntime) initNameResolution() error {
 	if resolverVersion == "" {
 		resolverVersion = components.FirstStableVersion
 	}
-
+	//TODO
+	// 函数注册
 	fName := utils.ComponentLogName(resolverName, "nameResolution", resolverVersion)
 	resolver, err = a.nameResolutionRegistry.Create(resolverName, resolverVersion, fName)
 	resolverMetadata.Name = resolverName
@@ -2235,13 +2238,16 @@ func (a *DaprRuntime) initNameResolution() error {
 		nr.HostAddress:  a.hostAddress,
 		nr.AppID:        a.runtimeConfig.ID,
 		nr.FunctionName: a.functionName,
+		nr.Region:       a.region,
+		nr.Provider:     a.provider,
 	}
 
 	if err != nil {
 		diag.DefaultMonitoring.ComponentInitFailed("nameResolution", "creation", resolverName)
 		return NewInitError(CreateComponentFailure, fName, err)
 	}
-
+	//TODO
+	// 解析器
 	if err = resolver.Init(resolverMetadata); err != nil {
 		diag.DefaultMonitoring.ComponentInitFailed("nameResolution", "init", resolverName)
 		return NewInitError(InitComponentFailure, fName, err)
@@ -2611,6 +2617,9 @@ func (a *DaprRuntime) loadComponents(opts *runtimeOpts) error {
 		loader = components.NewKubernetesComponents(a.runtimeConfig.Kubernetes, a.namespace, a.operatorClient, a.podName)
 	case modes.StandaloneMode:
 		loader = components.NewLocalComponents(a.runtimeConfig.Standalone.ResourcesPath...)
+	case modes.HostMode:
+		loader = components.NewHostComponents(a.runtimeConfig.Standalone.ResourcesPath...)
+
 	default:
 		return nil
 	}

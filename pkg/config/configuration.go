@@ -355,6 +355,35 @@ func LoadStandaloneConfiguration(config string) (*Configuration, string, error) 
 	return conf, string(b), nil
 }
 
+// LoadHostConfiguration gets the path to a config file and loads it into a configuration.
+func LoadHostConfiguration(config string) (*Configuration, string, error) {
+	_, err := os.Stat(config)
+	if err != nil {
+		return nil, "", err
+	}
+
+	b, err := os.ReadFile(config)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Parse environment variables from yaml
+	b = []byte(os.ExpandEnv(string(b)))
+
+	conf := LoadDefaultConfiguration()
+	err = yaml.Unmarshal(b, conf)
+	if err != nil {
+		return nil, string(b), err
+	}
+	err = sortAndValidateSecretsConfiguration(conf)
+	if err != nil {
+		return nil, string(b), err
+	}
+
+	sortMetricsSpec(conf)
+	return conf, string(b), nil
+}
+
 // LoadKubernetesConfiguration gets configuration from the Kubernetes operator with a given name.
 func LoadKubernetesConfiguration(config, namespace string, podName string, operatorClient operatorv1pb.OperatorClient) (*Configuration, error) {
 	resp, err := operatorClient.GetConfiguration(context.Background(), &operatorv1pb.GetConfigurationRequest{
