@@ -369,6 +369,7 @@ func FromFlags() (*DaprRuntime, error) {
 		log.Info("Initializing the operator client")
 		client, conn, clientErr := client.GetOperatorClient(context.TODO(), *controlPlaneAddress, security.TLSServerName, runtimeConfig.CertChain)
 		if clientErr != nil {
+			log.Errorf("init operator client faield, err:%s", err)
 			return nil, clientErr
 		}
 		defer conn.Close()
