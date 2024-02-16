@@ -14,6 +14,7 @@ limitations under the License.
 package runtime
 
 import (
+	config2 "github.com/dapr/dapr/pkg/config"
 	"time"
 
 	"github.com/dapr/dapr/pkg/apphealth"
@@ -37,6 +38,10 @@ const (
 	// H2CProtocol is the HTTP/2 Cleartext communication protocol (HTTP/2 without TLS).
 	H2CProtocol Protocol = "h2c"
 
+	// LambdaProtocol is the AWS Lambda communication protocol
+	LambdaProtocol Protocol = "lambda"
+	// FcProtocol is the AWS Lambda communication protocol
+	FcProtocol Protocol = "fc"
 	// DefaultDaprHTTPPort is the default http port for Dapr.
 	DefaultDaprHTTPPort = 3500
 	// DefaultDaprPublicPort is the default http port for Dapr.
@@ -71,6 +76,16 @@ func (p Protocol) IsHTTP() bool {
 	}
 }
 
+// IsServerless returns true if the app supported by serverless .
+func (p Protocol) IsServerless() bool {
+	switch p {
+	case LambdaProtocol, FcProtocol:
+		return true
+	default:
+		return false
+	}
+}
+
 // Config holds the Dapr Runtime configuration.
 type Config struct {
 	ID                           string
@@ -81,6 +96,7 @@ type Config struct {
 	APIGRPCPort                  int
 	InternalGRPCPort             int
 	ApplicationPort              int
+	ApplicationHost              string
 	APIListenAddresses           []string
 	ApplicationProtocol          Protocol
 	Mode                         modes.DaprMode
@@ -89,6 +105,8 @@ type Config struct {
 	Standalone                   config.StandaloneConfig
 	Kubernetes                   config.KubernetesConfig
 	Host                         config.HostConfig
+	AWSConfig                    config2.AWSConfig
+	Aliyunconfig                 config2.AliyunConfig
 	MaxConcurrency               int
 	mtlsEnabled                  bool
 	SentryServiceAddress         string
@@ -102,6 +120,10 @@ type Config struct {
 	AppHealthCheck               *apphealth.Config
 	AppHealthCheckHTTPPath       string
 	AppChannelAddress            string
+	functionName                 string
+	provider                     string
+	region                       string
+	ControlPlatformAddress       string
 }
 
 // NewRuntimeConfigOpts contains options for NewRuntimeConfig.
@@ -119,6 +141,7 @@ type NewRuntimeConfigOpts struct {
 	APIListenAddresses           []string
 	PublicPort                   *int
 	AppPort                      int
+	AppHost                      string
 	ProfilePort                  int
 	EnableProfiling              bool
 	MaxConcurrency               int
@@ -136,6 +159,10 @@ type NewRuntimeConfigOpts struct {
 	AppHealthProbeTimeout        time.Duration
 	AppHealthThreshold           int32
 	AppChannelAddress            string
+	FunctionName                 string
+	Provider                     string
+	Region                       string
+	ControlPlatformAddress       string
 }
 
 // NewRuntimeConfig returns a new runtime config.
@@ -155,18 +182,21 @@ func NewRuntimeConfig(opts NewRuntimeConfigOpts) *Config {
 	}
 
 	return &Config{
-		ID:                  opts.ID,
-		HTTPPort:            opts.HTTPPort,
-		PublicPort:          opts.PublicPort,
-		InternalGRPCPort:    opts.InternalGRPCPort,
-		APIGRPCPort:         opts.APIGRPCPort,
-		ApplicationPort:     opts.AppPort,
-		ProfilePort:         opts.ProfilePort,
-		APIListenAddresses:  opts.APIListenAddresses,
-		ApplicationProtocol: Protocol(opts.AppProtocol),
-		Mode:                modes.DaprMode(opts.Mode),
-		PlacementAddresses:  opts.PlacementAddresses,
-		AllowedOrigins:      opts.AllowedOrigins,
+		ID:                     opts.ID,
+		HTTPPort:               opts.HTTPPort,
+		PublicPort:             opts.PublicPort,
+		InternalGRPCPort:       opts.InternalGRPCPort,
+		APIGRPCPort:            opts.APIGRPCPort,
+		ApplicationPort:        opts.AppPort,
+		ControlPlatformAddress: opts.ControlPlatformAddress,
+		ApplicationHost:        opts.AppHost,
+		ProfilePort:            opts.ProfilePort,
+		APIListenAddresses:     opts.APIListenAddresses,
+		ApplicationProtocol:    Protocol(opts.AppProtocol),
+		Mode:                   modes.DaprMode(opts.Mode),
+		PlacementAddresses:     opts.PlacementAddresses,
+		AllowedOrigins:         opts.AllowedOrigins,
+
 		Standalone: config.StandaloneConfig{
 			ResourcesPath: opts.ResourcesPath,
 		},
@@ -186,5 +216,8 @@ func NewRuntimeConfig(opts NewRuntimeConfigOpts) *Config {
 		AppHealthCheck:               appHealthCheck,
 		AppHealthCheckHTTPPath:       opts.AppHealthCheckPath,
 		AppChannelAddress:            opts.AppChannelAddress,
+		region:                       opts.Region,
+		functionName:                 opts.FunctionName,
+		provider:                     opts.Provider,
 	}
 }

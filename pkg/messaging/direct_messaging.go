@@ -69,6 +69,7 @@ type directMessaging struct {
 	grpcPort                int
 	namespace               string
 	resolver                nr.Resolver
+	region                  string
 	hostAddress             string
 	hostName                string
 	maxRequestBodySizeMB    int
@@ -101,6 +102,7 @@ type NewDirectMessagingOpts struct {
 	ReadBufferSize          int
 	Resiliency              resiliency.Provider
 	IsStreamingEnabled      bool
+	Region                  string
 }
 
 // NewDirectMessaging returns a new direct messaging api.
@@ -124,6 +126,7 @@ func NewDirectMessaging(opts NewDirectMessagingOpts) DirectMessaging {
 		isStreamingEnabled:      opts.IsStreamingEnabled,
 		hostAddress:             hAddr,
 		hostName:                hName,
+		region:                  opts.Region,
 		universal: &universalapi.UniversalAPI{
 			AppID:      opts.AppID,
 			Logger:     log,
@@ -572,7 +575,7 @@ func (d *directMessaging) getRemoteApp(appID string) (remoteApp, error) {
 	} else if d.isHTTPEndpoint(id) {
 		address = d.checkHTTPEndpoints(id)
 	} else {
-		request := nr.ResolveRequest{ID: id, Namespace: namespace, Port: d.grpcPort}
+		request := nr.ResolveRequest{ID: id, Namespace: namespace, Port: d.grpcPort, Region: d.region}
 		address, err = d.resolver.ResolveID(request)
 		if err != nil {
 			return remoteApp{}, err

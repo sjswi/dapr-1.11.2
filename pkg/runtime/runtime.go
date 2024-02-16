@@ -20,6 +20,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/aliyun/fc-go-sdk"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/lambda"
 	"io"
 	"net"
 	nethttp "net/http"
@@ -63,6 +68,7 @@ import (
 	"github.com/dapr/dapr/pkg/channel"
 	httpEndpointChannel "github.com/dapr/dapr/pkg/channel/external"
 	httpChannel "github.com/dapr/dapr/pkg/channel/http"
+	lambdaChannel "github.com/dapr/dapr/pkg/channel/lambda"
 	"github.com/dapr/dapr/pkg/components"
 	"github.com/dapr/dapr/pkg/config"
 	diag "github.com/dapr/dapr/pkg/diagnostics"
@@ -162,8 +168,9 @@ type HTTPEndpointAuthorizer func(endpoint httpEndpointV1alpha1.HTTPEndpoint) boo
 
 // DaprRuntime holds all the core components of the runtime.
 type DaprRuntime struct {
-	ctx                     context.Context
-	cancel                  context.CancelFunc
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	runtimeConfig           *Config
 	globalConfig            *config.Configuration
 	accessControlList       *config.AccessControlList
@@ -199,6 +206,8 @@ type DaprRuntime struct {
 	appHealthLock           *sync.Mutex
 	bulkSubLock             *sync.Mutex
 	appHTTPClient           *nethttp.Client
+	lambdaClient            *lambda.Lambda
+	fcClient                *fc.Client
 	compStore               *compstore.ComponentStore
 
 	stateStoreRegistry         *stateLoader.Registry
@@ -226,9 +235,6 @@ type DaprRuntime struct {
 	tracerProvider *sdktrace.TracerProvider
 
 	workflowEngine *wfengine.WorkflowEngine
-	functionName   string
-	provider       string
-	region         string
 }
 
 type ComponentsCallback func(components ComponentRegistry) error
@@ -290,6 +296,8 @@ func NewDaprRuntime(runtimeConfig *Config, globalConfig *config.Configuration, a
 	rt.httpEndpointAuthorizers = []HTTPEndpointAuthorizer{rt.namespaceHTTPEndpointAuthorizer}
 
 	rt.initAppHTTPClient()
+
+	rt.initAppServerlessClient()
 
 	return rt
 }
@@ -416,7 +424,7 @@ func (a *DaprRuntime) setupTracing(hostAddress string, tpStore tracerProviderSto
 
 func (a *DaprRuntime) initRuntime(opts *runtimeOpts) error {
 	a.namespace = a.getNamespace()
-
+	// 连接sentry
 	err := a.establishSecurity(a.runtimeConfig.SentryServiceAddress)
 	if err != nil {
 		return err
@@ -439,7 +447,6 @@ func (a *DaprRuntime) initRuntime(opts *runtimeOpts) error {
 	if err != nil {
 		log.Errorf(err.Error())
 	}
-
 	a.pubSubRegistry = opts.pubsubRegistry
 	a.secretStoresRegistry = opts.secretStoreRegistry
 	a.stateStoreRegistry = opts.stateRegistry
@@ -1040,6 +1047,7 @@ func (a *DaprRuntime) initDirectMessaging(resolver nr.Resolver) {
 		Resiliency:              a.resiliency,
 		IsStreamingEnabled:      a.globalConfig.IsFeatureEnabled(config.ServiceInvocationStreaming),
 		CompStore:               a.compStore,
+		Region:                  a.runtimeConfig.region,
 	})
 }
 
@@ -2237,9 +2245,10 @@ func (a *DaprRuntime) initNameResolution() error {
 		nr.AppPort:      strconv.Itoa(a.runtimeConfig.ApplicationPort),
 		nr.HostAddress:  a.hostAddress,
 		nr.AppID:        a.runtimeConfig.ID,
-		nr.FunctionName: a.functionName,
-		nr.Region:       a.region,
-		nr.Provider:     a.provider,
+		nr.FunctionName: a.runtimeConfig.functionName,
+		nr.Region:       a.runtimeConfig.region,
+		nr.Provider:     a.runtimeConfig.provider,
+		nr.URL:          fmt.Sprintf("%s:%d", a.hostAddress, a.runtimeConfig.InternalGRPCPort),
 	}
 
 	if err != nil {
@@ -3153,7 +3162,9 @@ func (a *DaprRuntime) authSecretStoreOrDefault(object interface{}) string {
 }
 
 func (a *DaprRuntime) blockUntilAppIsReady() {
-
+	if a.runtimeConfig.ApplicationProtocol == LambdaProtocol {
+		return
+	}
 	//
 	if a.runtimeConfig.ApplicationPort <= 0 {
 		return
@@ -3212,7 +3223,14 @@ func (a *DaprRuntime) createAppChannel() (err error) {
 	}
 
 	var ch channel.AppChannel
-	if !a.runtimeConfig.ApplicationProtocol.IsHTTP() {
+	if a.runtimeConfig.ApplicationProtocol.IsServerless() {
+		config := a.getAppLambdaChannelConfig()
+
+		ch, err = lambdaChannel.CreateLocalChannel(config)
+		if err != nil {
+			return err
+		}
+	} else if !a.runtimeConfig.ApplicationProtocol.IsHTTP() {
 		// create gRPC app channel
 		ch, err = a.grpc.GetAppChannel()
 		if err != nil {
@@ -3318,6 +3336,34 @@ func (a *DaprRuntime) initAppHTTPClient() {
 	}
 }
 
+func (a *DaprRuntime) initAppServerlessClient() {
+	if a.runtimeConfig.ApplicationProtocol.IsServerless() {
+		if a.runtimeConfig.provider == string(config.AWSLambda) {
+			resp, err := nethttp.Get(fmt.Sprintf("http://%s/tt/api/v1/secret/getSecret?provider=aws", a.runtimeConfig.ControlPlatformAddress))
+			if err != nil {
+				panic(err)
+			}
+			var awsConfig config.Response
+			all, err := io.ReadAll(resp.Body)
+			if err != nil {
+				panic(err)
+			}
+			err = json.Unmarshal(all, &awsConfig)
+			if err != nil {
+				panic(err)
+			}
+			sess, err := session.NewSession(&aws.Config{
+				Region:      aws.String(a.runtimeConfig.region), // 可以根据你的区域进行调整
+				Credentials: credentials.NewStaticCredentials(awsConfig.Rows.AccessKeyID, awsConfig.Rows.AccessSecretID, ""),
+			})
+			if err != nil {
+				panic(err)
+			}
+			a.lambdaClient = lambda.New(sess)
+		}
+
+	}
+}
 func (a *DaprRuntime) getAppHTTPChannelConfig(pipeline httpMiddleware.Pipeline) httpChannel.ChannelConfiguration {
 	return httpChannel.ChannelConfiguration{
 		Client:               a.appHTTPClient,
@@ -3328,7 +3374,15 @@ func (a *DaprRuntime) getAppHTTPChannelConfig(pipeline httpMiddleware.Pipeline) 
 		MaxRequestBodySizeMB: a.runtimeConfig.MaxRequestBodySize,
 	}
 }
-
+func (a *DaprRuntime) getAppLambdaChannelConfig() lambdaChannel.ChannelConfiguration {
+	return lambdaChannel.ChannelConfiguration{
+		Client:               a.lambdaClient,
+		FuncName:             a.runtimeConfig.functionName,
+		MaxConcurrency:       a.runtimeConfig.MaxConcurrency,
+		TracingSpec:          a.globalConfig.Spec.TracingSpec,
+		MaxRequestBodySizeMB: a.runtimeConfig.MaxRequestBodySize,
+	}
+}
 func (a *DaprRuntime) getAppHTTPChannelForHTTPEndpointsConfig(pipeline httpMiddleware.Pipeline) httpEndpointChannel.ChannelConfigurationForHTTPEndpoints {
 	return httpEndpointChannel.ChannelConfigurationForHTTPEndpoints{
 		Client:               a.appHTTPClient,

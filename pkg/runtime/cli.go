@@ -51,9 +51,14 @@ func FromFlags() (*DaprRuntime, error) {
 	daprPublicPort := flag.String("dapr-public-port", "", "Public port for Dapr Health and Metadata to listen on")
 	daprAPIGRPCPort := flag.String("dapr-grpc-port", strconv.Itoa(DefaultDaprAPIGRPCPort), "gRPC port for the Dapr API to listen on")
 	daprInternalGRPCPort := flag.String("dapr-internal-grpc-port", "", "gRPC port for the Dapr Internal API to listen on")
-	appPort := flag.String("app-port", "", "The port the application is listening on")
+	appPort := flag.String("app-port", "", "The port of the application is listening on")
+	appHost := flag.String("app-host", "", "The host of the application.")
 	profilePort := flag.String("profile-port", strconv.Itoa(DefaultProfilePort), "The port for the profile server")
-	appProtocolPtr := flag.String("app-protocol", string(HTTPProtocol), "Protocol for the application: grpc, grpcs, http, https, h2c")
+	region := flag.String("region", "", "The region of the function located.")
+	funcName := flag.String("function-name", "", "The name of the function.")
+	controlPlatformAddress := flag.String("control-platform-address", "", "The address of the control platform.")
+	provider := flag.String("provider", "", "The provider of the function backend.")
+	appProtocolPtr := flag.String("app-protocol", string(HTTPProtocol), "Protocol for the application: grpc, grpcs, http, https, h2c. for serverless can use lambda, fc.")
 	componentsPath := flag.String("components-path", "", "Alias for --resources-path [Deprecated, use --resources-path]")
 	var resourcesPath stringSliceFlag
 	flag.Var(&resourcesPath, "resources-path", "Path for resources directory. If not specified, no resources will be loaded. Can be passed multiple times")
@@ -263,6 +268,8 @@ func FromFlags() (*DaprRuntime, error) {
 			}
 		case "":
 			appProtocol = string(HTTPProtocol)
+		case "lambda":
+			appProtocol = string(LambdaProtocol)
 		default:
 			return nil, fmt.Errorf("invalid value for 'app-protocol': %v", *appProtocolPtr)
 		}
@@ -300,12 +307,14 @@ func FromFlags() (*DaprRuntime, error) {
 	}
 
 	runtimeConfig := NewRuntimeConfig(NewRuntimeConfigOpts{
-		ID:                           *appID,
-		PlacementAddresses:           placementAddresses,
-		ControlPlaneAddress:          *controlPlaneAddress,
-		AllowedOrigins:               *allowedOrigins,
-		ResourcesPath:                resourcesPath,
+		ID:                  *appID,
+		PlacementAddresses:  placementAddresses,
+		ControlPlaneAddress: *controlPlaneAddress,
+		AllowedOrigins:      *allowedOrigins,
+		ResourcesPath:       resourcesPath,
+
 		AppProtocol:                  appProtocol,
+		ControlPlatformAddress:       *controlPlatformAddress,
 		Mode:                         *mode,
 		HTTPPort:                     daprHTTP,
 		InternalGRPCPort:             daprInternalGRPC,
@@ -313,6 +322,7 @@ func FromFlags() (*DaprRuntime, error) {
 		APIListenAddresses:           daprAPIListenAddressList,
 		PublicPort:                   publicPort,
 		AppPort:                      applicationPort,
+		AppHost:                      *appHost,
 		ProfilePort:                  profPort,
 		EnableProfiling:              *enableProfiling,
 		MaxConcurrency:               concurrency,
@@ -329,6 +339,9 @@ func FromFlags() (*DaprRuntime, error) {
 		AppHealthProbeTimeout:        healthProbeTimeout,
 		AppHealthThreshold:           healthThreshold,
 		AppChannelAddress:            *appChannelAddress,
+		FunctionName:                 *funcName,
+		Region:                       *region,
+		Provider:                     *provider,
 	})
 
 	// set environment variables
